@@ -1,0 +1,79 @@
+
+name: Python CI-CD to AWS EC2
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Build and Deploy to EC2
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Clone GitHub repository
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. Install Python on GitHub runner
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      # 3. Test Python application
+      - name: Test Application
+        run: |
+          python -m py_compile app.py
+          echo "Python application test successful"
+
+      # 4. Configure SSH
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key
+          chmod 600 ~/.ssh/ec2_key
+          printf '%s\n' "${{ secrets.EC2_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      # 5. Connect and install Python on EC2
+      - name: Install Python on EC2
+        run: |
+          ssh -i ~/.ssh/ec2_key \
+            -o StrictHostKeyChecking=yes \
+            ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} \
+            "sudo apt-get update && sudo apt-get install -y python3"
+
+      # 6. Create deployment directory
+      - name: Prepare EC2 Deployment
+        run: |
+          ssh -i ~/.ssh/ec2_key \
+            -o StrictHostKeyChecking=yes \
+            ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} \
+            "mkdir -p ~/python-app"
+
+      # 7. Copy Python application to EC2
+      - name: Deploy Python Application
+        run: |
+          scp -i ~/.ssh/ec2_key \
+            -o StrictHostKeyChecking=yes \
+            app.py \
+            ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:~/python-app/app.py
+
+      # 8. Execute application on EC2
+      - name: Run Python Application
+        run: |
+          ssh -i ~/.ssh/ec2_key \
+            -o StrictHostKeyChecking=yes \
+            ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} \
+            "cd ~/python-app && python3 app.py"
+
+      # 9. Deployment confirmation
+      - name: Deployment Success
+        run: |
+          echo "=================================="
+          echo "PYTHON EC2 DEPLOYMENT SUCCESSFUL"
+          echo "Application executed on AWS EC2"
+          echo "=================================="
